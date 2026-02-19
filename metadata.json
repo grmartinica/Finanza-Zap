@@ -1,0 +1,5 @@
+{
+  "name": "Gestor Financeiro WhatsApp",
+  "description": "Gestão financeira inteligente via WhatsApp com processamento de voz e texto.",
+  "requestFramePermissions": ["microphone"]
+}
