@@ -26,6 +26,74 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
+app.get('/api/status', async (req, res) => {
+  const status = {
+    supabase: false,
+    gemini: false,
+    waha: false,
+    env: {
+      supabase: !!process.env.SUPABASE_URL && !!process.env.SUPABASE_ANON_KEY,
+      gemini: !!process.env.GEMINI_API_KEY,
+      waha: !!process.env.WAHA_API_URL,
+    }
+  };
+
+  try {
+    const { error } = await supabase.from('transactions').select('id').limit(1);
+    status.supabase = !error;
+  } catch (e) {
+    status.supabase = false;
+  }
+
+  try {
+    const model = genAI.models.get({ model: 'gemini-3-flash-preview' });
+    status.gemini = !!model;
+  } catch (e) {
+    status.gemini = false;
+  }
+
+  if (process.env.WAHA_API_URL) {
+    try {
+      const response = await axios.get(`${process.env.WAHA_API_URL}/api/health`, { timeout: 2000 });
+      status.waha = response.status === 200;
+    } catch (e) {
+      status.waha = false;
+    }
+  }
+
+  res.json(status);
+});
+
+app.post('/api/simulate', async (req, res) => {
+  const { text } = req.body;
+  if (!text) return res.status(400).json({ error: 'Text is required' });
+
+  try {
+    const transaction = await processMessageWithGemini(text);
+    if (transaction) {
+      const { data, error } = await supabase
+        .from('transactions')
+        .insert([
+          {
+            amount: transaction.amount,
+            type: transaction.type,
+            category: transaction.category,
+            description: transaction.description,
+            raw_text: text,
+            whatsapp_from: 'Simulador',
+          },
+        ])
+        .select();
+
+      if (error) throw error;
+      return res.json({ success: true, transaction: data[0] });
+    }
+    res.status(400).json({ error: 'Not a financial transaction' });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // WAHA Webhook
 app.post('/api/webhook/whatsapp', async (req, res) => {
   try {
